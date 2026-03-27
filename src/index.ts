@@ -24,4 +24,5 @@ export type {
   TrackingSchedule,
   SessionTelemetry,
   Subscription,
+  BatteryOptimizationStatus,
 } from './types';

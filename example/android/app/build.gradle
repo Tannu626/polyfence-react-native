@@ -1,0 +1,43 @@
+apply plugin: "com.android.application"
+apply plugin: "kotlin-android"
+apply from: "../../node_modules/react-native/react.gradle"
+
+android {
+  compileSdkVersion rootProject.ext.compileSdkVersion
+
+  defaultConfig {
+    applicationId "io.polyfence.example"
+    minSdkVersion rootProject.ext.minSdkVersion
+    targetSdkVersion rootProject.ext.targetSdkVersion
+    versionCode 1
+    versionName "1.0"
+    buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", "false"
+    buildConfigField "boolean", "IS_HERMES_ENABLED", "true"
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+    }
+  }
+
+  packagingOptions {
+    pickFirst "**/libc++_shared.so"
+    pickFirst "**/libfbjni.so"
+  }
+
+  lintOptions {
+    checkReleaseBuilds false
+  }
+}
+
+dependencies {
+  implementation project(':react-native')
+  implementation project(':polyfence-react-native')
+  implementation 'com.facebook.react:react-android'
+  implementation 'com.facebook.soloader:soloader:0.10.4'
+  implementation 'org.jetbrains.kotlin:kotlin-stdlib'
+}
+
+apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle")
+applyNativeModulesAppBuildGradle(project)

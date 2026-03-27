@@ -41,7 +41,6 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     companion object {
         private const val PREFS_NAME = "polyfence_state"
         private const val KEY_TRACKING_ENABLED = "tracking_enabled"
-        private var pendingBridgePlatform: String? = null
     }
 
     private val context: Context = reactContext
@@ -63,14 +62,8 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
             LocationTracker.setAlertNotificationsEnabled(!disableAlerts)
 
             locationTracker = LocationTracker.getInstance(context)
-            locationTracker?.setDelegate(this)
-
-            pendingBridgePlatform?.let { platform ->
-                LocationTracker.setBridgePlatform(platform)
-                pendingBridgePlatform = null
-            } ?: run {
-                LocationTracker.setBridgePlatform("react-native")
-            }
+            locationTracker?.setCoreDelegate(this)
+            LocationTracker.setBridgePlatform("react-native")
 
             PolyfenceErrorManager.initialize { errorMap ->
                 sendErrorEvent(errorMap)
@@ -265,165 +258,271 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
         }
     }
 
-    /**
-     * PolyfenceCoreDelegate implementation: receive location updates from LocationTracker
-     */
+    @ReactMethod
+    fun requestPermissions(options: ReadableMap?, promise: Promise) {
+        try {
+            // This method checks the current permission state (granted/denied/notDetermined).
+            // It does NOT show a system permission dialog on Android — that requires ActivityCompat.requestPermissions
+            // with Activity access and onRequestPermissionsResult handling, which is not feasible from NativeModule.
+            // For production apps, use a library like react-native-permissions to trigger the system dialog,
+            // then call this method to verify the result.
+            val hasPerms = hasAllRequiredPerms(context)
+            promise.resolve(hasPerms)
+        } catch (e: Exception) {
+            Log.e("PolyfenceModule", "Failed to check permissions: ${e.message}")
+            promise.reject("PERMISSIONS_FAILED", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun isLocationServiceEnabled(promise: Promise) {
+        try {
+            val enabled = try {
+                val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                locationManager?.let {
+                    it.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                    it.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+                } ?: false
+            } catch (e: Exception) {
+                Log.e("PolyfenceModule", "Error checking location services: ${e.message}")
+                false
+            }
+            promise.resolve(enabled)
+        } catch (e: Exception) {
+            Log.e("PolyfenceModule", "Failed to check location services: ${e.message}")
+            promise.reject("LOCATION_SERVICE_CHECK_FAILED", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun getConfiguration(promise: Promise) {
+        try {
+            val config = getConfigurationMap()
+            promise.resolve(config)
+        } catch (e: Exception) {
+            Log.e("PolyfenceModule", "Failed to get configuration: ${e.message}")
+            promise.reject("CONFIG_GET_FAILED", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun updateConfiguration(configData: ReadableMap?, promise: Promise) {
+        try {
+            if (configData == null) {
+                promise.reject("INVALID_CONFIG", "Configuration data is required")
+                return
+            }
+
+            val configMap = configData.toHashMap()
+            val smartConfig = SmartGpsConfigFactory.fromMap(configMap)
+            LocationTracker.updateSmartConfiguration(smartConfig)
+            updateConfigurationInternal(configMap)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            Log.e("PolyfenceModule", "Failed to update configuration: ${e.message}")
+            promise.reject("CONFIG_UPDATE_FAILED", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun resetConfiguration(promise: Promise) {
+        try {
+            val defaultConfig = SmartGpsConfig()
+            LocationTracker.updateSmartConfiguration(defaultConfig)
+            val configMap = SmartGpsConfigFactory.toMap(defaultConfig)
+            updateConfigurationInternal(configMap)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            Log.e("PolyfenceModule", "Failed to reset configuration: ${e.message}")
+            promise.reject("CONFIG_RESET_FAILED", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun setAccuracyProfile(profileName: String?, promise: Promise) {
+        try {
+            if (profileName.isNullOrBlank()) {
+                promise.reject("INVALID_PROFILE", "Accuracy profile is required")
+                return
+            }
+
+            val normalized = profileName
+                .trim()
+                .uppercase(Locale.US)
+                .replace(Regex("[^A-Z0-9]"), "")
+
+            val targetProfile = SmartGpsConfig.AccuracyProfile.values().firstOrNull { profile ->
+                profile.name.uppercase(Locale.US).replace("_", "") == normalized
+            } ?: SmartGpsConfig.AccuracyProfile.MAX_ACCURACY
+
+            val currentConfig = LocationTracker.getCurrentSmartConfiguration()
+            val updatedConfig = currentConfig.copy(accuracyProfile = targetProfile)
+
+            LocationTracker.updateSmartConfiguration(updatedConfig)
+            val configMap = SmartGpsConfigFactory.toMap(updatedConfig)
+            updateConfigurationInternal(configMap)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            Log.e("PolyfenceModule", "Failed to set accuracy profile: ${e.message}")
+            promise.reject("PROFILE_SET_FAILED", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun batteryOptimizationStatus(promise: Promise) {
+        try {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isOptimized = powerManager.isIgnoringBatteryOptimizations(context.packageName)
+
+            val resultMap = Arguments.createMap().apply {
+                putBoolean("isIgnoringOptimizations", isOptimized)
+                putString("manufacturer", Build.MANUFACTURER)
+            }
+
+            if (!isOptimized) {
+                PolyfenceErrorManager.reportBatteryError(
+                    context,
+                    "battery_optimization_required",
+                    "Battery optimization is enabled and may affect background location tracking"
+                )
+            }
+
+            promise.resolve(resultMap)
+        } catch (e: Exception) {
+            Log.e("PolyfenceModule", "Failed to check battery optimization: ${e.message}")
+            PolyfenceErrorManager.reportError(
+                "battery_check_failed",
+                "Failed to check battery optimization status: ${e.message}",
+                mapOf("platform" to "react-native", "error" to (e.message ?: "Unknown error"))
+            )
+            promise.reject("BATTERY_CHECK_FAILED", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun requestBatteryOptimizationExemption(promise: Promise) {
+        try {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:${context.packageName}")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+
+            context.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e("PolyfenceModule", "Failed to request battery optimization exemption: ${e.message}")
+            promise.reject("BATTERY_REQUEST_FAILED", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun getErrorHistory(options: ReadableMap?, promise: Promise) {
+        try {
+            val timeRangeMs = options?.getLong("timeRangeMs")
+            val errorTypes = options?.getArray("errorTypes")?.toArrayList() as? List<String>
+            val history = PolyfenceDebugCollector.getErrorHistory(timeRangeMs, errorTypes)
+            promise.resolve(history)
+        } catch (e: Exception) {
+            Log.e("PolyfenceModule", "Failed to get error history: ${e.message}")
+            promise.reject("ERROR_HISTORY_FAILED", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun dispose(promise: Promise) {
+        try {
+            val intent = Intent(context, LocationTracker::class.java).apply {
+                action = LocationTracker.ACTION_STOP_TRACKING
+            }
+            context.startService(intent)
+            setTrackingEnabled(context, false)
+            locationTracker?.setCoreDelegate(null)
+            locationTracker = null
+            promise.resolve(null)
+        } catch (e: Exception) {
+            Log.e("PolyfenceModule", "Failed to dispose: ${e.message}")
+            promise.reject("DISPOSE_FAILED", e.message)
+        }
+    }
+
+    override fun onGeofenceEvent(eventData: Map<String, Any>) {
+        sendGeofenceEvent(eventData)
+    }
+
     override fun onLocationUpdate(locationData: Map<String, Any>) {
         sendLocationEvent(locationData)
     }
 
-    /**
-     * PolyfenceCoreDelegate implementation: receive geofence events from LocationTracker
-     */
-    override fun onGeofenceEvent(
-        zoneId: String,
-        zoneName: String,
-        eventType: String,
-        latitude: Double,
-        longitude: Double,
-        detectionTimeMs: Double,
-        gpsAccuracy: Double,
-        speedMps: Double,
-        activityAtEvent: String,
-        distanceToBoundaryM: Double
-    ) {
-        val event = mapOf(
-            "zoneId" to zoneId,
-            "zoneName" to zoneName,
-            "eventType" to eventType,
-            "timestamp" to System.currentTimeMillis(),
-            "latitude" to latitude,
-            "longitude" to longitude,
-            "detectionTimeMs" to detectionTimeMs,
-            "gpsAccuracy" to gpsAccuracy,
-            "speedMps" to speedMps,
-            "activityAtEvent" to activityAtEvent,
-            "distanceToBoundaryM" to distanceToBoundaryM
-        )
-        sendGeofenceEvent(event)
+    override fun onPerformanceEvent(performanceData: Map<String, Any>) {
+        sendPerformanceEvent(performanceData)
     }
 
-    /**
-     * PolyfenceCoreDelegate implementation: receive error events from LocationTracker
-     */
-    override fun onError(errorCode: String, errorMessage: String, details: Map<String, Any>?) {
-        val errorMap = mutableMapOf(
-            "code" to errorCode,
-            "message" to errorMessage,
-            "timestamp" to System.currentTimeMillis()
-        )
-        if (details != null) {
-            errorMap.putAll(details)
+    override fun onError(errorData: Map<String, Any>) {
+        sendErrorEvent(errorData)
+    }
+
+    private fun mapToWritableMap(data: Map<String, Any>): WritableMap {
+        val map = Arguments.createMap()
+        for ((key, value) in data) {
+            when (value) {
+                is String -> map.putString(key, value)
+                is Int -> map.putInt(key, value)
+                is Double -> map.putDouble(key, value)
+                is Boolean -> map.putBoolean(key, value)
+                is Long -> map.putDouble(key, value.toDouble())
+                null -> map.putNull(key)
+                else -> map.putString(key, value.toString())
+            }
         }
-        sendErrorEvent(errorMap)
+        return map
     }
 
-    /**
-     * PolyfenceCoreDelegate implementation: receive performance events from LocationTracker
-     */
-    override fun onPerformanceEvent(event: Map<String, Any>) {
-        sendPerformanceEvent(event)
-    }
-
-    /**
-     * Send location event via onLocation event name
-     */
     private fun sendLocationEvent(locationData: Map<String, Any>) {
         try {
-            val event = Arguments.createMap()
-            for ((key, value) in locationData) {
-                when (value) {
-                    is String -> event.putString(key, value)
-                    is Int -> event.putInt(key, value)
-                    is Double -> event.putDouble(key, value)
-                    is Boolean -> event.putBoolean(key, value)
-                    is Long -> event.putDouble(key, value.toDouble())
-                    null -> event.putNull(key)
-                    else -> event.putString(key, value.toString())
-                }
-            }
-            sendEvent("onLocation", event)
+            sendEvent("onLocation", mapToWritableMap(locationData))
         } catch (e: Exception) {
             Log.e("PolyfenceModule", "Failed to send location event: ${e.message}")
         }
     }
 
-    /**
-     * Send geofence event via onGeofenceEvent event name
-     */
     private fun sendGeofenceEvent(eventData: Map<String, Any>) {
         try {
-            val event = Arguments.createMap()
-            for ((key, value) in eventData) {
-                when (value) {
-                    is String -> event.putString(key, value)
-                    is Int -> event.putInt(key, value)
-                    is Double -> event.putDouble(key, value)
-                    is Boolean -> event.putBoolean(key, value)
-                    is Long -> event.putDouble(key, value.toDouble())
-                    null -> event.putNull(key)
-                    else -> event.putString(key, value.toString())
-                }
-            }
-            sendEvent("onGeofenceEvent", event)
+            sendEvent("onGeofenceEvent", mapToWritableMap(eventData))
         } catch (e: Exception) {
             Log.e("PolyfenceModule", "Failed to send geofence event: ${e.message}")
         }
     }
 
-    /**
-     * Send error event via onError event name
-     */
     private fun sendErrorEvent(errorData: Map<String, Any>) {
         try {
-            val event = Arguments.createMap()
-            for ((key, value) in errorData) {
-                when (value) {
-                    is String -> event.putString(key, value)
-                    is Int -> event.putInt(key, value)
-                    is Double -> event.putDouble(key, value)
-                    is Boolean -> event.putBoolean(key, value)
-                    is Long -> event.putDouble(key, value.toDouble())
-                    null -> event.putNull(key)
-                    else -> event.putString(key, value.toString())
-                }
-            }
-            sendEvent("onError", event)
+            sendEvent("onError", mapToWritableMap(errorData))
         } catch (e: Exception) {
             Log.e("PolyfenceModule", "Failed to send error event: ${e.message}")
         }
     }
 
-    /**
-     * Send performance event via onPerformance event name
-     */
     private fun sendPerformanceEvent(eventData: Map<String, Any>) {
         try {
-            val event = Arguments.createMap()
-            for ((key, value) in eventData) {
-                when (value) {
-                    is String -> event.putString(key, value)
-                    is Int -> event.putInt(key, value)
-                    is Double -> event.putDouble(key, value)
-                    is Boolean -> event.putBoolean(key, value)
-                    is Long -> event.putDouble(key, value.toDouble())
-                    null -> event.putNull(key)
-                    else -> event.putString(key, value.toString())
-                }
-            }
-            sendEvent("onPerformance", event)
+            sendEvent("onPerformance", mapToWritableMap(eventData))
         } catch (e: Exception) {
             Log.e("PolyfenceModule", "Failed to send performance event: ${e.message}")
         }
     }
 
     /**
-     * Helper: send event to React Native listeners
+     * Helper: send event to React Native listeners.
+     * Guards against crashes when React context is not ready or has been torn down.
      */
     private fun sendEvent(eventName: String, params: WritableMap) {
-        reactApplicationContext
-            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-            .emit(eventName, params)
+        try {
+            if (reactApplicationContext.hasActiveReactInstance()) {
+                reactApplicationContext
+                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    .emit(eventName, params)
+            }
+        } catch (e: Exception) {
+            Log.w("PolyfenceModule", "Failed to emit event $eventName: ${e.message}")
+        }
     }
 
     /**
@@ -480,5 +579,49 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     private fun setTrackingEnabled(context: Context, enabled: Boolean) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(KEY_TRACKING_ENABLED, enabled).apply()
+    }
+
+    /**
+     * Check if all required permissions are granted
+     */
+    private fun hasAllRequiredPerms(context: Context): Boolean {
+        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val bgOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+        } else true
+        val fgsOk = if (Build.VERSION.SDK_INT >= 34) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.FOREGROUND_SERVICE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        } else true
+        return (fine || coarse) && bgOk && fgsOk
+    }
+
+    /**
+     * Get current SmartGpsConfig as a map
+     */
+    private fun getConfigurationMap(): Map<String, Any> {
+        val config = LocationTracker.getCurrentSmartConfiguration()
+        return SmartGpsConfigFactory.toMap(config)
+    }
+
+    /**
+     * Update configuration and notify service
+     */
+    private fun updateConfigurationInternal(configMap: Map<String, Any>) {
+        val activitySettingsMap = configMap["activitySettings"] as? Map<String, Any>
+        if (activitySettingsMap != null) {
+            val activitySettings = ActivitySettings.fromMap(activitySettingsMap)
+            LocationTracker.setPendingActivitySettings(activitySettings)
+        }
+
+        try {
+            val intent = Intent(context, LocationTracker::class.java).apply {
+                action = LocationTracker.ACTION_UPDATE_CONFIG
+                putExtra("config", HashMap(configMap))
+            }
+            context.startService(intent)
+        } catch (e: Exception) {
+            Log.d("PolyfenceModule", "Config stored for when tracking starts: ${e.message}")
+        }
     }
 }

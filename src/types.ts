@@ -52,6 +52,8 @@ export type AccuracyProfile =
   | 'maxAccuracy'
   | 'balanced'
   | 'powerSaver'
+  | 'adaptive'
+  | 'batteryOptimal'
   | 'custom';
 
 export type UpdateStrategy =
@@ -88,6 +90,12 @@ export interface RuntimeStatus {
   currentIntervalMs: number;
   batteryLevel: number;
   lastLocationTimestamp?: number;
+}
+
+// Battery optimization (Android)
+export interface BatteryOptimizationStatus {
+  isIgnoringOptimizations: boolean;
+  manufacturer: string;
 }
 
 // Error

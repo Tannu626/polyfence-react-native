@@ -9,6 +9,8 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
     private var locationTracker: LocationTracker?
     private var zonePersistence: ZonePersistence?
     private var hasListeners = false
+    private var pendingEvents: [(name: String, body: [String: Any])] = []
+    private let maxPendingEvents = 50
 
     override func supportedEvents() -> [String] {
         return ["onLocation", "onGeofenceEvent", "onError", "onPerformance"]
@@ -20,6 +22,11 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
 
     override func startObserving() {
         hasListeners = true
+        // Flush any pending events that arrived before JS subscribed
+        for event in pendingEvents {
+            sendEvent(withName: event.name, body: event.body)
+        }
+        pendingEvents.removeAll()
     }
 
     override func stopObserving() {
@@ -36,9 +43,8 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
 
             zonePersistence = ZonePersistence()
             locationTracker = LocationTracker()
-            locationTracker?.setDelegate(self)
-
-            LocationTracker.shared.setBridgePlatform("react-native")
+            locationTracker?.coreDelegate = self
+            locationTracker?.setBridgePlatform("react-native")
 
             if let configDict = config?["config"] as? [String: Any],
                let disableAlerts = configDict["disableAlertNotifications"] as? Bool {
@@ -221,83 +227,250 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
         }
     }
 
+    @objc(requestPermissions:resolver:rejecter:)
+    func requestPermissions(options: NSDictionary?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        do {
+            guard let tracker = locationTracker else {
+                throw NSError(domain: "PolyfenceModule", code: 13, userInfo: [NSLocalizedDescriptionKey: "Location tracker not initialized"])
+            }
+
+            let always = (options?["always"] as? Bool) ?? false
+            tracker.requestPermissions(always: always)
+
+            // Check authorization status immediately after requesting.
+            // Note: the system dialog is async, so status at call time may still be .notDetermined
+            // if the user hasn't responded. Return false for not-yet-determined state.
+            let authorizationStatus = CLLocationManager.authorizationStatus()
+            let granted = (authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse)
+            resolve(granted)
+        } catch {
+            NSLog("PolyfenceModule: Request permissions failed: %@", error.localizedDescription)
+            reject("PERMISSION_FAILED", error.localizedDescription, error)
+        }
+    }
+
+    @objc(isLocationServiceEnabled:rejecter:)
+    func isLocationServiceEnabled(resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        resolve(CLLocationManager.locationServicesEnabled())
+    }
+
+    @objc(getConfiguration:rejecter:)
+    func getConfiguration(resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        do {
+            guard let tracker = locationTracker else {
+                throw NSError(domain: "PolyfenceModule", code: 14, userInfo: [NSLocalizedDescriptionKey: "Location tracker not initialized"])
+            }
+
+            let smartConfig = tracker.getCurrentSmartConfiguration()
+            let configMap = SmartGpsConfigFactory.toMap(smartConfig)
+            resolve(configMap)
+        } catch {
+            NSLog("PolyfenceModule: Get configuration failed: %@", error.localizedDescription)
+            reject("CONFIG_FAILED", error.localizedDescription, error)
+        }
+    }
+
+    @objc(updateConfiguration:resolver:rejecter:)
+    func updateConfiguration(configMap: NSDictionary?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        do {
+            guard let configDict = configMap as? [String: Any] else {
+                throw NSError(domain: "PolyfenceModule", code: 15, userInfo: [NSLocalizedDescriptionKey: "Invalid configuration data"])
+            }
+
+            guard let tracker = locationTracker else {
+                throw NSError(domain: "PolyfenceModule", code: 16, userInfo: [NSLocalizedDescriptionKey: "Location tracker not initialized"])
+            }
+
+            let smartConfig = SmartGpsConfigFactory.fromMap(configDict)
+            tracker.updateSmartConfiguration(smartConfig)
+
+            if let gpsAccuracyThreshold = configDict["gpsAccuracyThreshold"] as? Double {
+                tracker.setGpsAccuracyThreshold(gpsAccuracyThreshold)
+            }
+
+            if let dwellSettings = configDict["dwellSettings"] as? [String: Any] {
+                let dwellEnabled = dwellSettings["enabled"] as? Bool ?? true
+                let dwellThresholdMs = dwellSettings["dwellThresholdMs"] as? Int ?? 300000
+                tracker.setDwellConfig(enabled: dwellEnabled, thresholdMs: dwellThresholdMs)
+            }
+
+            if let clusterSettings = configDict["clusterSettings"] as? [String: Any] {
+                let clusterEnabled = clusterSettings["enabled"] as? Bool ?? false
+                let activeRadiusMeters = clusterSettings["activeRadiusMeters"] as? Double ?? 5000.0
+                let refreshDistanceMeters = clusterSettings["refreshDistanceMeters"] as? Double ?? 1000.0
+                tracker.setClusterConfig(enabled: clusterEnabled, activeRadiusMeters: activeRadiusMeters, refreshDistanceMeters: refreshDistanceMeters)
+            }
+
+            if let scheduleSettings = configDict["scheduleSettings"] as? [String: Any] {
+                tracker.setScheduleConfig(scheduleSettings)
+            }
+
+            if let activitySettings = configDict["activitySettings"] as? [String: Any] {
+                tracker.setActivityConfig(activitySettings)
+            }
+
+            resolve(nil)
+        } catch {
+            NSLog("PolyfenceModule: Update configuration failed: %@", error.localizedDescription)
+            reject("CONFIG_FAILED", error.localizedDescription, error)
+        }
+    }
+
+    @objc(resetConfiguration:rejecter:)
+    func resetConfiguration(resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        do {
+            guard let tracker = locationTracker else {
+                throw NSError(domain: "PolyfenceModule", code: 17, userInfo: [NSLocalizedDescriptionKey: "Location tracker not initialized"])
+            }
+
+            tracker.resetSmartConfiguration()
+            resolve(nil)
+        } catch {
+            NSLog("PolyfenceModule: Reset configuration failed: %@", error.localizedDescription)
+            reject("CONFIG_FAILED", error.localizedDescription, error)
+        }
+    }
+
+    @objc(setAccuracyProfile:resolver:rejecter:)
+    func setAccuracyProfile(profileName: String?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        do {
+            guard let profile = profileName else {
+                throw NSError(domain: "PolyfenceModule", code: 18, userInfo: [NSLocalizedDescriptionKey: "Accuracy profile value required"])
+            }
+
+            guard let tracker = locationTracker else {
+                throw NSError(domain: "PolyfenceModule", code: 19, userInfo: [NSLocalizedDescriptionKey: "Location tracker not initialized"])
+            }
+
+            let normalized = normalizeEnumValue(profile)
+            let currentConfig = tracker.getCurrentSmartConfiguration()
+            let targetProfile = SmartGpsConfig.AccuracyProfile.allCases.first(where: {
+                normalizeEnumValue($0.rawValue) == normalized
+            }) ?? .maxAccuracy
+
+            let updatedConfig = SmartGpsConfig(
+                accuracyProfile: targetProfile,
+                updateStrategy: currentConfig.updateStrategy,
+                proximitySettings: currentConfig.proximitySettings,
+                movementSettings: currentConfig.movementSettings,
+                batterySettings: currentConfig.batterySettings,
+                enableDebugLogging: currentConfig.enableDebugLogging
+            )
+
+            tracker.updateSmartConfiguration(updatedConfig)
+            resolve(nil)
+        } catch {
+            NSLog("PolyfenceModule: Set accuracy profile failed: %@", error.localizedDescription)
+            reject("CONFIG_FAILED", error.localizedDescription, error)
+        }
+    }
+
+    @objc(getErrorHistory:resolver:rejecter:)
+    func getErrorHistory(options: NSDictionary?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        do {
+            let errorHistory = PolyfenceErrorManager.shared.getErrorHistory(limit: (options?["limit"] as? Int) ?? 50)
+            resolve(errorHistory)
+        } catch {
+            NSLog("PolyfenceModule: Get error history failed: %@", error.localizedDescription)
+            reject("ERROR_HISTORY_FAILED", error.localizedDescription, error)
+        }
+    }
+
+    @objc(batteryOptimizationStatus:rejecter:)
+    func batteryOptimizationStatus(resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        resolve(["isIgnoringOptimizations": true, "manufacturer": "Apple"])
+    }
+
+    @objc(requestBatteryOptimizationExemption:rejecter:)
+    func requestBatteryOptimizationExemption(resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        resolve(true)
+    }
+
+    @objc(dispose:rejecter:)
+    func dispose(resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        locationTracker?.stopTracking()
+        locationTracker?.coreDelegate = nil
+        locationTracker = nil
+        zonePersistence = nil
+        resolve(nil)
+    }
+
+    // MARK: - Private Helper Methods
+
+    private func normalizeEnumValue(_ value: String) -> String {
+        let uppercased = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let filtered = uppercased.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+        return String(String.UnicodeScalarView(filtered))
+    }
+
     // MARK: - PolyfenceCoreDelegate Implementation
+
+    func onGeofenceEvent(_ eventData: [String: Any]) {
+        sendGeofenceEvent(eventData)
+    }
 
     func onLocationUpdate(_ locationData: [String: Any]) {
         sendLocationEvent(locationData)
     }
 
-    func onGeofenceEvent(
-        zoneId: String,
-        zoneName: String,
-        eventType: String,
-        latitude: Double,
-        longitude: Double,
-        detectionTimeMs: Double,
-        gpsAccuracy: Double,
-        speedMps: Double,
-        activityAtEvent: String,
-        distanceToBoundaryM: Double
-    ) {
-        let event: [String: Any] = [
-            "zoneId": zoneId,
-            "zoneName": zoneName,
-            "eventType": eventType,
-            "timestamp": Int64(Date().timeIntervalSince1970 * 1000),
-            "latitude": latitude,
-            "longitude": longitude,
-            "detectionTimeMs": detectionTimeMs,
-            "gpsAccuracy": gpsAccuracy,
-            "speedMps": speedMps,
-            "activityAtEvent": activityAtEvent,
-            "distanceToBoundaryM": distanceToBoundaryM
-        ]
-        sendGeofenceEvent(event)
+    func onPerformanceEvent(_ performanceData: [String: Any]) {
+        sendPerformanceEvent(performanceData)
     }
 
-    func onError(_ errorCode: String, errorMessage: String, details: [String: Any]?) {
-        var errorMap: [String: Any] = [
-            "code": errorCode,
-            "message": errorMessage,
-            "timestamp": Int64(Date().timeIntervalSince1970 * 1000)
-        ]
-        if let details = details {
-            errorMap.merge(details) { _, new in new }
-        }
-        sendErrorEvent(errorMap)
-    }
-
-    func onPerformanceEvent(_ event: [String: Any]) {
-        sendPerformanceEvent(event)
+    func onError(_ errorData: [String: Any]) {
+        sendErrorEvent(errorData)
     }
 
     // MARK: - Private Event Sending Methods
 
     private func sendLocationEvent(_ locationData: [String: Any]) {
-        guard hasListeners else { return }
+        if !hasListeners {
+            if pendingEvents.count < maxPendingEvents {
+                pendingEvents.append((name: "onLocation", body: locationData))
+            }
+            return
+        }
         sendEvent(withName: "onLocation", body: locationData)
     }
 
     private func sendGeofenceEvent(_ eventData: [String: Any]) {
-        guard hasListeners else { return }
+        if !hasListeners {
+            if pendingEvents.count < maxPendingEvents {
+                pendingEvents.append((name: "onGeofenceEvent", body: eventData))
+            }
+            return
+        }
         sendEvent(withName: "onGeofenceEvent", body: eventData)
     }
 
     private func sendErrorEvent(_ errorData: [String: Any]) {
-        guard hasListeners else { return }
+        if !hasListeners {
+            if pendingEvents.count < maxPendingEvents {
+                pendingEvents.append((name: "onError", body: errorData))
+            }
+            return
+        }
         sendEvent(withName: "onError", body: errorData)
     }
 
     private func sendPerformanceEvent(_ eventData: [String: Any]) {
-        guard hasListeners else { return }
+        if !hasListeners {
+            if pendingEvents.count < maxPendingEvents {
+                pendingEvents.append((name: "onPerformance", body: eventData))
+            }
+            return
+        }
         sendEvent(withName: "onPerformance", body: eventData)
     }
 
     private func sendStatus(trackingEnabled: Bool?) {
         let zonesCount = (try? zonePersistence?.getZoneCount()) ?? 0
+        // Query actual tracking state if not explicitly passed.
+        // LocationTracker.isTracking() returns true if tracking is actively running.
+        let tracking = trackingEnabled ?? (locationTracker?.isTracking() ?? false)
         let payload: [String: Any?] = [
             "type": "status",
-            "trackingEnabled": trackingEnabled ?? false,
+            "trackingEnabled": tracking,
             "zonesCount": zonesCount,
             "profile": nil,
             "lastAccuracy": nil,
