@@ -1,0 +1,36 @@
+# Source
+tsconfig.json
+tsconfig.build.json
+jest.config.js
+.eslintrc.js
+
+# Development
+example/
+__tests__/
+__mocks__/
+__fixtures__/
+scripts/
+
+# Build
+android/build/
+ios/build/
+ios/Pods/
+
+# Internal (safety net — .gitignore should catch these first)
+CLAUDE.md
+.cursorrules
+.claude/
+tasks/
+prompts/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CI
+.github/
