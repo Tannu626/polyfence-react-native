@@ -11,6 +11,7 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
     private var hasListeners = false
     private var pendingEvents: [(name: String, body: [String: Any])] = []
     private let maxPendingEvents = 50
+    private let eventQueue = DispatchQueue(label: "io.polyfence.reactnative.events")
 
     override func supportedEvents() -> [String] {
         return ["onLocation", "onGeofenceEvent", "onError", "onPerformance"]
@@ -21,16 +22,19 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
     }
 
     override func startObserving() {
-        hasListeners = true
-        // Flush any pending events that arrived before JS subscribed
-        for event in pendingEvents {
-            sendEvent(withName: event.name, body: event.body)
+        eventQueue.sync {
+            hasListeners = true
+            for event in pendingEvents {
+                sendEvent(withName: event.name, body: event.body)
+            }
+            pendingEvents.removeAll()
         }
-        pendingEvents.removeAll()
     }
 
     override func stopObserving() {
-        hasListeners = false
+        eventQueue.sync {
+            hasListeners = false
+        }
     }
 
     @objc(initialize:resolver:rejecter:)
@@ -154,7 +158,17 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
             }
 
             let states = tracker.getCurrentZoneStates()
-            resolve(states)
+            let saved = zonePersistence?.loadAllZones() ?? [:]
+            var result: [[String: Any]] = []
+            for (zoneId, isInside) in states {
+                let zoneName = saved[zoneId]?.1 ?? zoneId
+                result.append([
+                    "zoneId": zoneId,
+                    "zoneName": zoneName,
+                    "isInside": isInside,
+                ])
+            }
+            resolve(result)
         } catch {
             NSLog("PolyfenceModule: Get zone states failed: %@", error.localizedDescription)
             reject("ZONE_STATES_FAILED", error.localizedDescription, error)
@@ -201,9 +215,7 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
                 throw NSError(domain: "PolyfenceModule", code: 11, userInfo: [NSLocalizedDescriptionKey: "Location tracker not initialized"])
             }
 
-            if let scheduleSettings = scheduleDict as? [String: Any] {
-                tracker.setScheduleConfig(scheduleSettings)
-            }
+            tracker.setScheduleConfig(scheduleDict)
 
             resolve(nil)
         } catch {
@@ -367,13 +379,19 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
 
     @objc(getErrorHistory:resolver:rejecter:)
     func getErrorHistory(options: NSDictionary?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
-        do {
-            let errorHistory = PolyfenceErrorManager.shared.getErrorHistory(limit: (options?["limit"] as? Int) ?? 50)
-            resolve(errorHistory)
-        } catch {
-            NSLog("PolyfenceModule: Get error history failed: %@", error.localizedDescription)
-            reject("ERROR_HISTORY_FAILED", error.localizedDescription, error)
+        let limit = (options?["limit"] as? Int) ?? 50
+        let timeRangeMs: Int64? = {
+            if let n = options?["timeRangeMs"] as? NSNumber {
+                return n.int64Value
+            }
+            return nil
+        }()
+        let errorTypes = options?["errorTypes"] as? [String]
+        var history = PolyfenceDebugCollector.shared.getErrorHistory(timeRangeMs: timeRangeMs, errorTypes: errorTypes)
+        if limit > 0, history.count > limit {
+            history = Array(history.suffix(limit))
         }
+        resolve(history)
     }
 
     @objc(batteryOptimizationStatus:rejecter:)
@@ -388,6 +406,10 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
 
     @objc(dispose:rejecter:)
     func dispose(resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+        eventQueue.sync {
+            pendingEvents.removeAll()
+            hasListeners = false
+        }
         locationTracker?.stopTracking()
         locationTracker?.coreDelegate = nil
         locationTracker = nil
@@ -424,43 +446,59 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
     // MARK: - Private Event Sending Methods
 
     private func sendLocationEvent(_ locationData: [String: Any]) {
-        if !hasListeners {
-            if pendingEvents.count < maxPendingEvents {
+        var shouldSend = false
+        eventQueue.sync {
+            if hasListeners {
+                shouldSend = true
+            } else if pendingEvents.count < maxPendingEvents {
                 pendingEvents.append((name: "onLocation", body: locationData))
             }
-            return
         }
-        sendEvent(withName: "onLocation", body: locationData)
+        if shouldSend {
+            sendEvent(withName: "onLocation", body: locationData)
+        }
     }
 
     private func sendGeofenceEvent(_ eventData: [String: Any]) {
-        if !hasListeners {
-            if pendingEvents.count < maxPendingEvents {
+        var shouldSend = false
+        eventQueue.sync {
+            if hasListeners {
+                shouldSend = true
+            } else if pendingEvents.count < maxPendingEvents {
                 pendingEvents.append((name: "onGeofenceEvent", body: eventData))
             }
-            return
         }
-        sendEvent(withName: "onGeofenceEvent", body: eventData)
+        if shouldSend {
+            sendEvent(withName: "onGeofenceEvent", body: eventData)
+        }
     }
 
     private func sendErrorEvent(_ errorData: [String: Any]) {
-        if !hasListeners {
-            if pendingEvents.count < maxPendingEvents {
+        var shouldSend = false
+        eventQueue.sync {
+            if hasListeners {
+                shouldSend = true
+            } else if pendingEvents.count < maxPendingEvents {
                 pendingEvents.append((name: "onError", body: errorData))
             }
-            return
         }
-        sendEvent(withName: "onError", body: errorData)
+        if shouldSend {
+            sendEvent(withName: "onError", body: errorData)
+        }
     }
 
     private func sendPerformanceEvent(_ eventData: [String: Any]) {
-        if !hasListeners {
-            if pendingEvents.count < maxPendingEvents {
+        var shouldSend = false
+        eventQueue.sync {
+            if hasListeners {
+                shouldSend = true
+            } else if pendingEvents.count < maxPendingEvents {
                 pendingEvents.append((name: "onPerformance", body: eventData))
             }
-            return
         }
-        sendEvent(withName: "onPerformance", body: eventData)
+        if shouldSend {
+            sendEvent(withName: "onPerformance", body: eventData)
+        }
     }
 
     private func sendStatus(trackingEnabled: Bool?) {

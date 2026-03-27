@@ -44,7 +44,6 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     }
 
     private val context: Context = reactContext
-    private var locationTracker: LocationTracker? = null
 
     override fun getName(): String = "Polyfence"
 
@@ -61,8 +60,7 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
             val disableAlerts = (configMap["config"] as? Map<*, *>)?.get("disableAlertNotifications") as? Boolean ?: false
             LocationTracker.setAlertNotificationsEnabled(!disableAlerts)
 
-            locationTracker = LocationTracker.getInstance(context)
-            locationTracker?.setCoreDelegate(this)
+            LocationTracker.setPendingCoreDelegate(this)
             LocationTracker.setBridgePlatform("react-native")
 
             PolyfenceErrorManager.initialize { errorMap ->
@@ -190,7 +188,18 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     fun getZoneStates(promise: Promise) {
         try {
             val states = LocationTracker.getCurrentZoneStates()
-            promise.resolve(states)
+            val persistence = ZonePersistence(context)
+            val saved = persistence.loadAllZones()
+            val result = Arguments.createArray()
+            for ((zoneId, isInside) in states) {
+                val entry = Arguments.createMap()
+                val zoneName = saved[zoneId]?.second ?: zoneId
+                entry.putString("zoneId", zoneId)
+                entry.putString("zoneName", zoneName)
+                entry.putBoolean("isInside", isInside)
+                result.pushMap(entry)
+            }
+            promise.resolve(result)
         } catch (e: Exception) {
             Log.e("PolyfenceModule", "Failed to get zone states: ${e.message}")
             promise.reject("ZONE_STATES_FAILED", e.message)
@@ -201,7 +210,7 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     fun getDebugInfo(promise: Promise) {
         try {
             val debugInfo = PolyfenceDebugCollector.collectDebugInfo(context)
-            promise.resolve(debugInfo)
+            promise.resolve(mapToWritableMap(debugInfo))
         } catch (e: Exception) {
             Log.e("PolyfenceModule", "Failed to get debug info: ${e.message}")
             promise.reject("DEBUG_INFO_FAILED", e.message)
@@ -212,10 +221,13 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     fun getSessionTelemetry(promise: Promise) {
         try {
             val telemetry = LocationTracker.getSessionTelemetry()
-            val sessionData = HashMap(telemetry)
+            val sessionData = mutableMapOf<String, Any>()
+            for ((key, value) in telemetry) {
+                if (value != null) sessionData[key] = value
+            }
             sessionData["deviceCategory"] = getDeviceCategory()
             sessionData["osVersionMajor"] = Build.VERSION.SDK_INT
-            promise.resolve(sessionData)
+            promise.resolve(mapToWritableMap(sessionData))
         } catch (e: Exception) {
             Log.e("PolyfenceModule", "Failed to get session telemetry: ${e.message}")
             promise.reject("TELEMETRY_FAILED", e.message)
@@ -298,7 +310,7 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     fun getConfiguration(promise: Promise) {
         try {
             val config = getConfigurationMap()
-            promise.resolve(config)
+            promise.resolve(mapToWritableMap(config))
         } catch (e: Exception) {
             Log.e("PolyfenceModule", "Failed to get configuration: ${e.message}")
             promise.reject("CONFIG_GET_FAILED", e.message)
@@ -418,10 +430,22 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     @ReactMethod
     fun getErrorHistory(options: ReadableMap?, promise: Promise) {
         try {
-            val timeRangeMs = options?.getLong("timeRangeMs")
+            val timeRangeMs = if (options != null && options.hasKey("timeRangeMs") && !options.isNull("timeRangeMs")) {
+                options.getDouble("timeRangeMs").toLong()
+            } else null
             val errorTypes = options?.getArray("errorTypes")?.toArrayList() as? List<String>
-            val history = PolyfenceDebugCollector.getErrorHistory(timeRangeMs, errorTypes)
-            promise.resolve(history)
+            var history = PolyfenceDebugCollector.getErrorHistory(timeRangeMs, errorTypes)
+            val limit = if (options != null && options.hasKey("limit") && !options.isNull("limit")) {
+                options.getInt("limit")
+            } else null
+            if (limit != null && limit > 0 && history.size > limit) {
+                history = history.takeLast(limit)
+            }
+            val result = Arguments.createArray()
+            for (entry in history) {
+                result.pushMap(mapToWritableMap(entry))
+            }
+            promise.resolve(result)
         } catch (e: Exception) {
             Log.e("PolyfenceModule", "Failed to get error history: ${e.message}")
             promise.reject("ERROR_HISTORY_FAILED", e.message)
@@ -436,8 +460,7 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
             }
             context.startService(intent)
             setTrackingEnabled(context, false)
-            locationTracker?.setCoreDelegate(null)
-            locationTracker = null
+            LocationTracker.setPendingCoreDelegate(null)
             promise.resolve(null)
         } catch (e: Exception) {
             Log.e("PolyfenceModule", "Failed to dispose: ${e.message}")
@@ -470,11 +493,51 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                 is Double -> map.putDouble(key, value)
                 is Boolean -> map.putBoolean(key, value)
                 is Long -> map.putDouble(key, value.toDouble())
+                is Float -> map.putDouble(key, value.toDouble())
+                is Map<*, *> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val nested = value as? Map<String, Any>
+                    if (nested != null) {
+                        map.putMap(key, mapToWritableMap(nested))
+                    } else {
+                        map.putString(key, value.toString())
+                    }
+                }
+                is List<*> -> {
+                    map.putArray(key, listToWritableArray(value))
+                }
                 null -> map.putNull(key)
                 else -> map.putString(key, value.toString())
             }
         }
         return map
+    }
+
+    private fun listToWritableArray(list: List<*>): WritableArray {
+        val array = Arguments.createArray()
+        for (item in list) {
+            when (item) {
+                is String -> array.pushString(item)
+                is Int -> array.pushInt(item)
+                is Double -> array.pushDouble(item)
+                is Boolean -> array.pushBoolean(item)
+                is Long -> array.pushDouble(item.toDouble())
+                is Float -> array.pushDouble(item.toDouble())
+                is Map<*, *> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val nested = item as? Map<String, Any>
+                    if (nested != null) {
+                        array.pushMap(mapToWritableMap(nested))
+                    } else {
+                        array.pushString(item.toString())
+                    }
+                }
+                is List<*> -> array.pushArray(listToWritableArray(item))
+                null -> array.pushNull()
+                else -> array.pushString(item.toString())
+            }
+        }
+        return array
     }
 
     private fun sendLocationEvent(locationData: Map<String, Any>) {

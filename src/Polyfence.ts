@@ -9,7 +9,7 @@ import type {
   GeofenceEvent,
   PolyfenceLocation,
   PolyfenceError,
-  RuntimeStatus,
+  PerformanceEventPayload,
   Subscription,
   AccuracyProfile,
   BatteryOptimizationStatus,
@@ -19,6 +19,7 @@ import {
   onGeofenceEvent,
   onError,
   onPerformance,
+  normalizePolyfenceError,
   removeAllListeners as removeAllEventListeners,
 } from './events';
 
@@ -81,6 +82,9 @@ export class Polyfence {
     return NativePolyfence.removeAllZones();
   }
 
+  /**
+   * Current inside/outside state per zone, joined with persisted zone names in the native bridge.
+   */
   async getZoneStates(): Promise<ZoneState[]> {
     this.assertNotDisposed();
     return NativePolyfence.getZoneStates();
@@ -118,7 +122,7 @@ export class Polyfence {
     return onError(callback);
   }
 
-  onPerformance(callback: (status: RuntimeStatus) => void): Subscription {
+  onPerformance(callback: (payload: PerformanceEventPayload) => void): Subscription {
     return onPerformance(callback);
   }
 
@@ -198,7 +202,13 @@ export class Polyfence {
     errorTypes?: string[];
   }): Promise<PolyfenceError[]> {
     this.assertNotDisposed();
-    return NativePolyfence.getErrorHistory(options ?? {});
+    const raw: unknown = await NativePolyfence.getErrorHistory(options ?? {});
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    return raw.map((item) =>
+      normalizePolyfenceError(item as Record<string, unknown>)
+    );
   }
 
   async dispose(): Promise<void> {

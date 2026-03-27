@@ -558,6 +558,20 @@ android {
 
 ---
 
+## Known Differences from Flutter
+
+The following Flutter APIs are intentionally deferred from v0.1.0 of the React Native bridge:
+
+- `enableIntelligentOptimization()`, `enableProximityOptimization()`, `enableMovementOptimization()` — ML-powered optimization APIs. These will be added when the intelligence layer is integrated (planned for v0.2.0).
+- `zones` getter — Use `getZoneStates()` to query current zone state.
+- `currentConfiguration` getter — Use `getConfiguration()` instead.
+- `statusStream` — Use `onPerformance()` event listener for runtime status updates.
+- `requestPermissions` on Android does not show a system dialog. Use `react-native-permissions` to trigger the dialog, then call `requestPermissions()` to verify the result.
+
+These gaps will be addressed in subsequent releases.
+
+---
+
 ## Troubleshooting
 
 ### Debugging

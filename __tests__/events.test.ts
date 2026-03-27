@@ -198,7 +198,7 @@ describe('Events', () => {
         .mockReturnValueOnce(mockSub2);
 
       const sub1 = onLocation(callback1);
-      const sub2 = onLocation(callback2);
+      onLocation(callback2);
 
       sub1.remove();
 

@@ -3,8 +3,6 @@ import type {
   Coordinate,
   GeofenceEvent,
   PolyfenceConfiguration,
-  AccuracyProfile,
-  UpdateStrategy,
   PolyfenceLocation,
   RuntimeStatus,
   BatteryOptimizationStatus,
@@ -14,8 +12,6 @@ import type {
   TrackingSchedule,
   SessionTelemetry,
   Subscription,
-  GeofenceEventType,
-  ZoneType,
   PolyfenceErrorType,
 } from '../src/types';
 

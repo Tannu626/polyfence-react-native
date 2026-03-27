@@ -4,6 +4,7 @@ export {
   onGeofenceEvent,
   onError,
   onPerformance,
+  normalizePolyfenceError,
   removeAllListeners,
 } from './events';
 export type {
@@ -17,6 +18,7 @@ export type {
   AccuracyProfile,
   UpdateStrategy,
   RuntimeStatus,
+  PerformanceEventPayload,
   PolyfenceError,
   PolyfenceErrorType,
   PolyfenceDebugInfo,

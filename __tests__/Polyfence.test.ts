@@ -5,8 +5,6 @@ import type {
   Zone,
   PolyfenceConfiguration,
   TrackingSchedule,
-  GeofenceEvent,
-  PolyfenceLocation,
 } from '../src/types';
 
 describe('Polyfence', () => {
@@ -291,7 +289,10 @@ describe('Polyfence', () => {
         mockErrors
       );
       const result = await Polyfence.instance.getErrorHistory({ limit: 10 });
-      expect(result).toEqual(mockErrors);
+      expect(result[0]).toMatchObject({
+        type: 'permission_denied',
+        message: 'Permission denied',
+      });
       expect(NativePolyfence.getErrorHistory).toHaveBeenCalledWith({
         limit: 10,
       });

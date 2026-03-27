@@ -79,6 +79,19 @@ export interface PolyfenceConfiguration {
   saasBaseUrl?: string;
   analyticsEnabled?: boolean;
   industryCategory?: string;
+  /** iOS bridge forwards these when present; Android may ignore until parity lands. */
+  gpsAccuracyThreshold?: number;
+  dwellSettings?: {
+    enabled?: boolean;
+    dwellThresholdMs?: number;
+  };
+  clusterSettings?: {
+    enabled?: boolean;
+    activeRadiusMeters?: number;
+    refreshDistanceMeters?: number;
+  };
+  scheduleSettings?: Record<string, unknown>;
+  activitySettings?: Record<string, unknown>;
 }
 
 // Runtime status
@@ -91,6 +104,13 @@ export interface RuntimeStatus {
   batteryLevel: number;
   lastLocationTimestamp?: number;
 }
+
+/**
+ * Payloads on the performance channel vary: full {@link RuntimeStatus}-like maps,
+ * `type: "status"` snapshots (`trackingEnabled`, `zonesCount`, …), `system_health`, etc.
+ * Narrow at runtime (e.g. `if ('trackingEnabled' in payload)`) as needed.
+ */
+export type PerformanceEventPayload = Record<string, unknown>;
 
 // Battery optimization (Android)
 export interface BatteryOptimizationStatus {

@@ -10,12 +10,12 @@ import {
 } from 'react-native';
 import {Polyfence} from 'polyfence-react-native';
 import type {
-  ZoneState,
   GeofenceEvent,
   PolyfenceLocation,
   PolyfenceError,
   AccuracyProfile,
   Subscription,
+  ZoneState,
 } from 'polyfence-react-native';
 import {styles, colors, spacing} from './styles';
 import {demoZones} from './demoZones';
@@ -203,7 +203,7 @@ export default function App(): React.ReactElement {
       <ScrollView
         style={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
-        {errorLog.length > 0 && (
+        {errorLog.length > 0 && errorLog[0] && (
           <View style={[styles.card, {backgroundColor: colors.destructive}]}>
             <View style={styles.row}>
               <Text
@@ -249,7 +249,7 @@ export default function App(): React.ReactElement {
                 <Text style={styles.value}>{zoneCount}</Text>
               </View>
               <View style={[styles.badge, {backgroundColor: colors.accent}]}>
-                <Text style={styles.badgeText}>{zoneStates.length}</Text>
+                <Text style={styles.badgeText}>{Object.keys(zoneStates).length}</Text>
               </View>
             </View>
 
@@ -345,41 +345,34 @@ export default function App(): React.ReactElement {
               </Text>
             </TouchableOpacity>
           </View>
-          {zoneStates.length === 0 ? (
+          {Object.keys(zoneStates).length === 0 ? (
             <View style={styles.card}>
               <Text style={styles.value}>No zones loaded</Text>
             </View>
           ) : (
             <FlatList
               scrollEnabled={false}
-              data={zoneStates}
-              keyExtractor={item => item.zoneId}
-              renderItem={({item}) => (
+              data={Object.entries(zoneStates)}
+              keyExtractor={([zoneId]) => zoneId}
+              renderItem={({item: [zoneId, isInside]}) => (
                 <View style={styles.card}>
-                  <Text style={styles.value}>{item.zoneName}</Text>
+                  <Text style={styles.value}>{zoneId}</Text>
                   <View style={[styles.row, {marginBottom: 0, marginTop: spacing.md}]}>
                     <Text style={styles.label}>
-                      Status: {item.isInside ? 'Inside' : 'Outside'}
+                      Status: {isInside ? 'Inside' : 'Outside'}
                     </Text>
                     <View
                       style={[
                         styles.badge,
-                        item.isInside
+                        isInside
                           ? styles.successBadge
                           : styles.badgeInactive,
                       ]}>
                       <Text style={styles.badgeText}>
-                        {item.isInside ? 'IN' : 'OUT'}
+                        {isInside ? 'IN' : 'OUT'}
                       </Text>
                     </View>
                   </View>
-                  {item.distanceToBoundaryM !== undefined && (
-                    <View style={[styles.row, {marginTop: spacing.sm, marginBottom: 0}]}>
-                      <Text style={styles.label}>
-                        Distance: {item.distanceToBoundaryM.toFixed(0)}m
-                      </Text>
-                    </View>
-                  )}
                 </View>
               )}
             />
