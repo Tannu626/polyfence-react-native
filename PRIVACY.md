@@ -29,3 +29,9 @@ When SaaS telemetry is enabled (opt-out with one line), only aggregated session 
 | React Native | Bridge framework | None from this package |
 | Play Services Location (Android) | GPS provider | Device GPS only |
 | CoreLocation (iOS) | GPS provider | Device GPS only |
+
+## Contact
+
+- **Privacy questions:** [hello@polyfence.io](mailto:hello@polyfence.io)
+- **Security vulnerabilities:** [hello@polyfence.io](mailto:hello@polyfence.io) (see [SECURITY.md](./SECURITY.md))
+- **General inquiries:** [hello@polyfence.io](mailto:hello@polyfence.io)

@@ -71,6 +71,8 @@ This bridge does not make any network calls. Optionally, you may configure telem
 - No hardcoded secrets or credentials
 - Internal communication over native bridges only
 
-## Questions or Concerns?
+## Contact
 
-Email hello@polyfence.io for security-related inquiries.
+- **Security vulnerabilities:** [hello@polyfence.io](mailto:hello@polyfence.io)
+- **Privacy practices:** see [PRIVACY.md](./PRIVACY.md) — [hello@polyfence.io](mailto:hello@polyfence.io)
+- **General inquiries:** [hello@polyfence.io](mailto:hello@polyfence.io)
