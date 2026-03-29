@@ -73,6 +73,4 @@ This bridge does not make any network calls. Optionally, you may configure telem
 
 ## Contact
 
-- **Security vulnerabilities:** [hello@polyfence.io](mailto:hello@polyfence.io)
-- **Privacy practices:** see [PRIVACY.md](./PRIVACY.md) — [hello@polyfence.io](mailto:hello@polyfence.io)
-- **General inquiries:** [hello@polyfence.io](mailto:hello@polyfence.io)
+For any security issues, privacy concerns, or general inquiries: [hello@polyfence.io](mailto:hello@polyfence.io)

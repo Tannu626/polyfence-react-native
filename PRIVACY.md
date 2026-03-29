@@ -32,6 +32,4 @@ When SaaS telemetry is enabled (opt-out with one line), only aggregated session 
 
 ## Contact
 
-- **Privacy questions:** [hello@polyfence.io](mailto:hello@polyfence.io)
-- **Security vulnerabilities:** [hello@polyfence.io](mailto:hello@polyfence.io) (see [SECURITY.md](./SECURITY.md))
-- **General inquiries:** [hello@polyfence.io](mailto:hello@polyfence.io)
+For any privacy questions, security concerns, or general inquiries: [hello@polyfence.io](mailto:hello@polyfence.io)
