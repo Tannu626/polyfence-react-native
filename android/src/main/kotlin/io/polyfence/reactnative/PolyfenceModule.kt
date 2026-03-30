@@ -631,6 +631,10 @@ class PolyfenceModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
         }
     }
 
+    override fun isTrackingEnabled(): Boolean {
+        return isTrackingEnabled(context)
+    }
+
     /**
      * Tracking state helpers
      */

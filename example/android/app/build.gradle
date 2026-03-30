@@ -1,8 +1,9 @@
 apply plugin: "com.android.application"
 apply plugin: "kotlin-android"
-apply from: "../../node_modules/react-native/react.gradle"
+apply plugin: "com.facebook.react"
 
 android {
+  namespace "io.polyfence.example"
   compileSdkVersion rootProject.ext.compileSdkVersion
 
   defaultConfig {
@@ -11,8 +12,6 @@ android {
     targetSdkVersion rootProject.ext.targetSdkVersion
     versionCode 1
     versionName "1.0"
-    buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", "false"
-    buildConfigField "boolean", "IS_HERMES_ENABLED", "true"
   }
 
   buildTypes {
@@ -32,10 +31,9 @@ android {
 }
 
 dependencies {
-  implementation project(':react-native')
   implementation project(':polyfence-react-native')
   implementation 'com.facebook.react:react-android'
-  implementation 'com.facebook.soloader:soloader:0.10.4'
+  implementation 'com.facebook.react:hermes-android'
   implementation 'org.jetbrains.kotlin:kotlin-stdlib'
 }
 

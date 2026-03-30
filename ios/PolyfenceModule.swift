@@ -6,6 +6,9 @@ import PolyfenceCore
 @objc(PolyfenceModule)
 class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
 
+    private static let prefsName = "polyfence_state"
+    private static let keyTrackingEnabled = "tracking_enabled"
+
     private var locationTracker: LocationTracker?
     private var zonePersistence: ZonePersistence?
     private var hasListeners = false
@@ -69,6 +72,7 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
                 throw NSError(domain: "PolyfenceModule", code: 1, userInfo: [NSLocalizedDescriptionKey: "Location tracker not initialized"])
             }
             tracker.startTracking()
+            setTrackingEnabled(true)
             sendStatus(trackingEnabled: true)
             resolve(nil)
         } catch {
@@ -84,6 +88,7 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
                 throw NSError(domain: "PolyfenceModule", code: 2, userInfo: [NSLocalizedDescriptionKey: "Location tracker not initialized"])
             }
             tracker.stopTracking()
+            setTrackingEnabled(false)
             sendStatus(trackingEnabled: false)
             resolve(nil)
         } catch {
@@ -411,6 +416,7 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
             hasListeners = false
         }
         locationTracker?.stopTracking()
+        setTrackingEnabled(false)
         locationTracker?.coreDelegate = nil
         locationTracker = nil
         zonePersistence = nil
@@ -418,6 +424,10 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
     }
 
     // MARK: - Private Helper Methods
+
+    private func setTrackingEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.keyTrackingEnabled)
+    }
 
     private func normalizeEnumValue(_ value: String) -> String {
         let uppercased = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -441,6 +451,11 @@ class PolyfenceModule: RCTEventEmitter, PolyfenceCoreDelegate {
 
     func onError(_ errorData: [String: Any]) {
         sendErrorEvent(errorData)
+    }
+
+    func isTrackingEnabled() -> Bool {
+        let defaults = UserDefaults.standard
+        return defaults.bool(forKey: Self.keyTrackingEnabled)
     }
 
     // MARK: - Private Event Sending Methods
