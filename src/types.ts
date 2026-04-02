@@ -187,6 +187,7 @@ export interface SessionTelemetry {
   batteryDrainPercent: number;
   deviceCategory: string;
   bridgePlatform: string;
+  coreVersion?: string;
   sessionStartHour: number;
   [key: string]: unknown; // future-proof for new fields
 }

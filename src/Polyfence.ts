@@ -27,6 +27,7 @@ import {
 import { PolyfenceAnalytics } from './analytics';
 import type { AnalyticsConfig, StorageAdapter } from './analytics';
 import { AppLifecycleManager } from './lifecycle';
+import { POLYFENCE_PLUGIN_VERSION } from './version';
 
 const { Polyfence: NativePolyfence } = NativeModules;
 
@@ -80,7 +81,7 @@ export class Polyfence {
       if (!resolvedConfig.disableTelemetry) {
         PolyfenceAnalytics.instance.initialize(
           resolvedConfig,
-          '0.1.0', // TODO: read from package version
+          POLYFENCE_PLUGIN_VERSION,
           () => this.getSessionTelemetry(),
           storage,
         );
