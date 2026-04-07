@@ -7,6 +7,11 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-purple.svg)](https://opensource.org/licenses/MIT)
 ![Platform: Android & iOS](https://img.shields.io/badge/platform-Android%20%7C%20iOS-blue)
 
+<p>
+  <img alt="Dashboard" src="assets/screenshot-dashboard.png" width="280" />
+  <img alt="Zone Map" src="assets/screenshot-map.png" width="280" />
+</p>
+
 ## Why Polyfence?
 
 - **Polygon geofencing** — Not just circles. Define zones with arbitrary polygon boundaries (complex city zones, campus outlines, delivery areas).
