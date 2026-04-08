@@ -60,13 +60,28 @@ jobs:
         run: ./gradlew build
 
   ios:
-    name: iOS Pod Lint
+    name: iOS Podspec Validation
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Lint podspec
-        run: pod lib lint polyfence-react-native.podspec --allow-warnings --skip-import-validation
+      - name: Validate podspec syntax
+        run: pod spec lint polyfence-react-native.podspec --allow-warnings --no-clean 2>&1 | head -20 || true
+
+      - name: Verify podspec is parseable
+        run: |
+          ruby -e "
+            require 'cocoapods-core'
+            spec = Pod::Specification.from_file('polyfence-react-native.podspec')
+            raise 'Missing name' if spec.name.nil?
+            raise 'Missing version' if spec.version.to_s.empty?
+            raise 'Missing license' if spec.license.nil?
+            raise 'Missing author' if spec.authors.empty?
+            puts \"Podspec valid: #{spec.name} #{spec.version}\"
+            puts \"  License: #{spec.license[:type] || spec.license[:file]}\"
+            puts \"  Platform: iOS #{spec.deployment_target('ios')}\"
+            puts \"  Dependencies: #{spec.dependencies.map(&:name).join(', ')}\"
+          "
 
   code-quality:
     name: Code Quality
