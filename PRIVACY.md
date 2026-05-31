@@ -1,5 +1,8 @@
 # Polyfence React Native — Privacy Policy
 
+**Effective Date:** May 31, 2026  
+**Last Updated:** May 31, 2026
+
 **Applies to:** `polyfence-react-native` SDK only. Server-side and SaaS-side privacy posture is described separately at `https://polyfence.io/privacy`.
 
 ## Zero PII about your end users
