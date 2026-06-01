@@ -29,7 +29,7 @@ Here's exactly what gets sent to the analytics endpoint when a session ends:
 
   "zone_usage": { "circle": 3, "polygon": 2 },
 
-  "error_counts": { "permission_denied": 1 },
+  "error_counts": { "gpsPermissionDenied": 1 },
 
   "ttfd_ms": 500,
   "had_detection": true,
@@ -106,7 +106,7 @@ Here's exactly what gets sent to the analytics endpoint when a session ends:
 
 | Field | Type | Example | Description |
 |-------|------|---------|-------------|
-| `error_counts` | object | `{"permission_denied": 1}` | Error type counts |
+| `error_counts` | object | `{"gpsPermissionDenied": 1}` | Error type counts |
 
 ### Plugin Health
 
@@ -192,20 +192,10 @@ Sessions are managed automatically by polyfence-core. No manual session manageme
 
 ## Opt-Out
 
-Telemetry is **opt-out** (enabled by default per D008). Disable it:
+Telemetry is **opt-out** (enabled by default per D008). Disable it at initialize:
 
 ```typescript
-await Polyfence.instance.initialize({
-  analyticsEnabled: false,
-});
-```
-
-Or via method:
-
-```typescript
-await Polyfence.instance.updateConfiguration({
-  analyticsEnabled: false,
-});
+await Polyfence.instance.initialize(undefined, { disableTelemetry: true });
 ```
 
 When disabled, no telemetry is collected or sent.

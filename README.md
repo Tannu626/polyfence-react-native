@@ -254,10 +254,10 @@ await Polyfence.instance.startTracking();
 ```typescript
 const errorSubscription = Polyfence.instance.onError((error) => {
   switch (error.type) {
-    case 'permission_denied':
+    case 'gpsPermissionDenied':
       // Guide user to settings
       break;
-    case 'location_disabled':
+    case 'gpsServiceDisabled':
       // Prompt to enable GPS
       break;
     default:
@@ -285,7 +285,7 @@ const errorSubscription = Polyfence.instance.onError((error) => {
 |--------|---------|-------------|
 | `addZone(zone)` | `Promise<void>` | Add a circle or polygon zone |
 | `removeZone(zoneId)` | `Promise<void>` | Remove a zone by ID |
-| `removeAllZones()` | `Promise<void>` | Remove all zones |
+| `clearAllZones()` | `Promise<void>` | Remove all zones |
 | `getZoneStates()` | `Promise<ZoneState[]>` | Get current INSIDE/OUTSIDE state for all zones |
 
 ### Configuration
@@ -296,8 +296,6 @@ const errorSubscription = Polyfence.instance.onError((error) => {
 | `updateConfiguration(config)` | `Promise<void>` | Update configuration |
 | `resetConfiguration()` | `Promise<void>` | Reset to defaults |
 | `setAccuracyProfile(profile)` | `Promise<void>` | Set GPS accuracy profile |
-| `setTrackingSchedule(schedule)` | `Promise<void>` | Set time-based tracking schedule |
-| `clearTrackingSchedule()` | `Promise<void>` | Remove tracking schedule |
 
 ### Permissions & System
 
@@ -312,15 +310,15 @@ const errorSubscription = Polyfence.instance.onError((error) => {
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `getDebugInfo()` | `Promise<PolyfenceDebugInfo>` | Get debug information (version, status, error history) |
+| `debugInfo()` | `Promise<PolyfenceDebugInfo>` | Get debug information (version, status, error history) |
 | `getSessionTelemetry()` | `Promise<SessionTelemetry>` | Get session metrics (GPS updates, zone events, battery impact) |
-| `getErrorHistory(options?)` | `Promise<PolyfenceError[]>` | Get recent errors |
+| `errorHistory(options?)` | `Promise<PolyfenceError[]>` | Get recent errors |
 
 ### Events
 
 | Method | Callback | Description |
 |--------|----------|-------------|
-| `onLocation(callback)` | `(location: PolyfenceLocation) => void` | Raw GPS location updates |
+| `onLocationUpdate(callback)` | `(location: PolyfenceLocation) => void` | Raw GPS location updates |
 | `onGeofenceEvent(callback)` | `(event: GeofenceEvent) => void` | Zone enter/exit/dwell events |
 | `onError(callback)` | `(error: PolyfenceError) => void` | Error events |
 | `onPerformance(callback)` | `(status: RuntimeStatus) => void` | Performance status updates |
@@ -340,7 +338,7 @@ Polyfence.instance.onGeofenceEvent((event) => {
   console.log({
     zoneId: event.zoneId,
     zoneName: event.zoneName,
-    type: event.type, // 'enter' | 'exit' | 'dwell' | 'recovery_enter' | 'recovery_exit'
+    type: event.type, // 'enter' | 'exit' | 'dwell' | 'recoveryEnter' | 'recoveryExit'
     location: event.location,
     timestamp: event.timestamp,
     confidence: event.confidence, // 0-1
@@ -352,7 +350,7 @@ Polyfence.instance.onGeofenceEvent((event) => {
 ### Location Events
 
 ```typescript
-Polyfence.instance.onLocation((location) => {
+Polyfence.instance.onLocationUpdate((location) => {
   console.log({
     latitude: location.latitude,
     longitude: location.longitude,
@@ -370,7 +368,7 @@ Polyfence.instance.onLocation((location) => {
 ```typescript
 Polyfence.instance.onError((error) => {
   console.log({
-    type: error.type, // 'permission_denied' | 'location_disabled' | ...
+    type: error.type, // 'gpsPermissionDenied' | 'gpsServiceDisabled' | ...
     message: error.message,
     code: error.code,
     details: error.details,
@@ -454,12 +452,14 @@ await Polyfence.instance.updateConfiguration({
 Track only during specific time windows:
 
 ```typescript
-await Polyfence.instance.setTrackingSchedule({
-  startHour: 9,
-  startMinute: 0,
-  endHour: 17,
-  endMinute: 0,
-  daysOfWeek: [1, 2, 3, 4, 5], // Monday-Friday
+await Polyfence.instance.updateConfiguration({
+  scheduleSettings: {
+    startHour: 9,
+    startMinute: 0,
+    endHour: 17,
+    endMinute: 0,
+    daysOfWeek: [1, 2, 3, 4, 5], // Monday-Friday
+  },
 });
 ```
 
@@ -514,9 +514,7 @@ This is the deliberate posture, not an inconsistency. See [PRIVACY.md](PRIVACY.m
 ### Disable telemetry (one line)
 
 ```typescript
-await Polyfence.instance.initialize({
-  analyticsEnabled: false,
-});
+await Polyfence.instance.initialize(undefined, { disableTelemetry: true });
 ```
 
 ### Architecture Guarantees
@@ -618,7 +616,7 @@ LocationTracker GeofenceEngine Polyfence
 **Programmatic debugging** — Use the debug API:
 
 ```typescript
-const debug = await Polyfence.instance.getDebugInfo();
+const debug = await Polyfence.instance.debugInfo();
 console.log('GPS accuracy:', debug.lastLocationTimestamp);
 console.log('Active zones:', debug.activeZones);
 console.log('Tracking:', debug.isTracking);
@@ -628,7 +626,7 @@ console.log('Tracking:', debug.isTracking);
 
 When opening a GitHub issue, include:
 
-1. Output of `Polyfence.instance.getDebugInfo()`
+1. Output of `Polyfence.instance.debugInfo()`
 2. Device manufacturer and OS version (e.g., Samsung Galaxy S24, Android 14)
 3. Whether battery optimization is disabled
 4. Logcat/Xcode console output
