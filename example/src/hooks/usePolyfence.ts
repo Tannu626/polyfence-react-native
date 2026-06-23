@@ -307,6 +307,9 @@ export function usePolyfence(): [PolyfenceState, PolyfenceActions] {
         // Load zones from API
         await refreshZones();
 
+        // QA TEST 2.2: getZoneStates() after addZone() but before startTracking()
+        const states22 = await polyfence.current.getZoneStates();
+        logDebug(`QA-2.2: getZoneStates() after addZone, before startTracking: count=${states22.length} result=${JSON.stringify(states22)}`, 'info');
 
         // Subscribe to location updates
         const locSub = polyfence.current.onLocationUpdate(
