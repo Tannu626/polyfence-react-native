@@ -285,6 +285,23 @@ export function usePolyfence(): [PolyfenceState, PolyfenceActions] {
         await polyfence.current.initialize();
         logDebug('Polyfence initialized', 'info');
 
+        // QA TEST 1.6: dispose guard
+        await polyfence.current.dispose();
+        logDebug('QA-1.6: dispose() done', 'info');
+        try {
+          await polyfence.current.startTracking();
+          logDebug('QA-1.6: startTracking() after dispose SUCCEEDED', 'info');
+        } catch (e: unknown) {
+          logDebug(`QA-1.6: same instance threw: ${e}`, 'error');
+        }
+        try {
+          await Polyfence.instance.startTracking();
+          logDebug('QA-1.6: Polyfence.instance.startTracking() SUCCEEDED', 'info');
+        } catch (e: unknown) {
+          logDebug(`QA-1.6: Polyfence.instance threw: ${e}`, 'error');
+        }
+        logDebug(`QA-1.6: same object? ${Polyfence.instance === polyfence.current}`, 'info');
+
         // Configure SmartGPS intelligent strategy
         await polyfence.current.updateConfiguration({
           updateStrategy: 'intelligent',
