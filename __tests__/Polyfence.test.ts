@@ -6,7 +6,16 @@ import type { Zone, PolyfenceConfiguration } from '../src/types';
 describe('Polyfence', () => {
   const NativePolyfence = NativeModules.Polyfence;
 
-  beforeEach(() => {
+  const resetSingleton = () => {
+    (Polyfence as unknown as { _instance: Polyfence | null })._instance = null;
+  };
+
+  beforeEach(async () => {
+    // Default: every test starts with an initialized singleton, matching the
+    // contract every consumer must follow. Tests that need to assert pre-init
+    // behaviour override this in their own beforeEach.
+    resetSingleton();
+    await Polyfence.instance.initialize();
     jest.clearAllMocks();
   });
 
@@ -19,6 +28,13 @@ describe('Polyfence', () => {
   });
 
   describe('initialize', () => {
+    beforeEach(() => {
+      // Override: tests in this block call initialize() themselves and want a
+      // clean mock + fresh singleton to assert against.
+      resetSingleton();
+      jest.clearAllMocks();
+    });
+
     it('should call native initialize with config', async () => {
       const config: PolyfenceConfiguration = {
         accuracyProfile: 'balanced',
@@ -31,6 +47,138 @@ describe('Polyfence', () => {
     it('should pass empty object when no config provided', async () => {
       await Polyfence.instance.initialize();
       expect(NativePolyfence.initialize).toHaveBeenCalledWith({});
+    });
+  });
+
+  describe('precondition: initialize() required (BUG-001)', () => {
+    beforeEach(() => {
+      // Override: fresh singleton with _isInitialized = false so we can
+      // exercise the pre-init guard.
+      resetSingleton();
+      jest.clearAllMocks();
+    });
+
+    const errorPattern = /call initialize\(\) before any other method/;
+
+    // The Android-side silent path leak (addZone routing through the
+    // Intent/service branch when tracking_enabled is true) is the
+    // motivating symptom for BUG-001. Kept as its own narrative test
+    // because the polygon shape and Android context matter for the bug
+    // trail; the every-guarded-method coverage lives in the table below.
+    it('addZone() rejects before initialize() with a polygon zone (BUG-001 repro shape)', async () => {
+      const zone: Zone = {
+        id: 'z1',
+        name: 'Polygon',
+        type: 'polygon',
+        polygon: [
+          { latitude: 0, longitude: 0 },
+          { latitude: 0, longitude: 1 },
+          { latitude: 1, longitude: 1 },
+        ],
+      };
+      await expect(Polyfence.instance.addZone(zone)).rejects.toThrow(
+        errorPattern,
+      );
+      expect(NativePolyfence.addZone).not.toHaveBeenCalled();
+    });
+
+    // Every guarded JS method must reject pre-init. Data-driven so a
+    // future refactor that drops assertInitialized() from any one of
+    // these still fails the suite.
+    type GuardedCall = {
+      method: string;
+      nativeName: string;
+      call: (p: Polyfence) => Promise<unknown>;
+    };
+
+    const sampleZone: Zone = {
+      id: 'z1',
+      name: 'Home',
+      type: 'circle',
+      center: { latitude: 0, longitude: 0 },
+      radius: 100,
+    };
+    const sampleConfig: PolyfenceConfiguration = {
+      accuracyProfile: 'balanced',
+    };
+
+    const guardedCalls: GuardedCall[] = [
+      {
+        method: 'startTracking',
+        nativeName: 'startTracking',
+        call: (p) => p.startTracking(),
+      },
+      {
+        method: 'stopTracking',
+        nativeName: 'stopTracking',
+        call: (p) => p.stopTracking(),
+      },
+      {
+        method: 'addZone',
+        nativeName: 'addZone',
+        call: (p) => p.addZone(sampleZone),
+      },
+      {
+        method: 'removeZone',
+        nativeName: 'removeZone',
+        call: (p) => p.removeZone('z1'),
+      },
+      {
+        method: 'clearAllZones',
+        nativeName: 'removeAllZones',
+        call: (p) => p.clearAllZones(),
+      },
+      {
+        method: 'getZoneStates',
+        nativeName: 'getZoneStates',
+        call: (p) => p.getZoneStates(),
+      },
+      {
+        method: 'getSessionTelemetry',
+        nativeName: 'getSessionTelemetry',
+        call: (p) => p.getSessionTelemetry(),
+      },
+      {
+        method: 'requestPermissions',
+        nativeName: 'requestPermissions',
+        call: (p) => p.requestPermissions(),
+      },
+      {
+        method: 'getConfiguration',
+        nativeName: 'getConfiguration',
+        call: (p) => p.getConfiguration(),
+      },
+      {
+        method: 'updateConfiguration',
+        nativeName: 'updateConfiguration',
+        call: (p) => p.updateConfiguration(sampleConfig),
+      },
+      {
+        method: 'resetConfiguration',
+        nativeName: 'resetConfiguration',
+        call: (p) => p.resetConfiguration(),
+      },
+      {
+        method: 'setAccuracyProfile',
+        nativeName: 'setAccuracyProfile',
+        call: (p) => p.setAccuracyProfile('balanced'),
+      },
+    ];
+
+    it.each(guardedCalls)(
+      '$method() rejects before initialize() and never reaches the native module',
+      async ({ call, nativeName }) => {
+        await expect(call(Polyfence.instance)).rejects.toThrow(errorPattern);
+        expect(
+          (NativePolyfence as Record<string, jest.Mock>)[nativeName],
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it('once initialize() resolves, guarded methods succeed', async () => {
+      await Polyfence.instance.initialize();
+      await Polyfence.instance.startTracking();
+      expect(NativePolyfence.startTracking).toHaveBeenCalled();
     });
   });
 
