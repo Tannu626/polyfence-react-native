@@ -285,6 +285,10 @@ export function usePolyfence(): [PolyfenceState, PolyfenceActions] {
         await polyfence.current.initialize();
         logDebug('Polyfence initialized', 'info');
 
+        // debugInfo() before startTracking()
+        const debugBefore = await polyfence.current.debugInfo();
+        logDebug(`debugInfo before startTracking: ${JSON.stringify(debugBefore)}`, 'info');
+
         // Configure SmartGPS intelligent strategy
         await polyfence.current.updateConfiguration({
           updateStrategy: 'intelligent',
@@ -424,6 +428,11 @@ export function usePolyfence(): [PolyfenceState, PolyfenceActions] {
       } else {
         await polyfence.current.startTracking();
         logDebug('Tracking started', 'info');
+
+        // debugInfo() after startTracking()
+        const debugAfter = await polyfence.current.debugInfo();
+        logDebug(`debugInfo after startTracking: ${JSON.stringify(debugAfter)}`, 'info');
+
         setIsTracking(true);
         startEventWatchdog();
         await saveTrackingState(true);
