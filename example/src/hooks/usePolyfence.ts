@@ -424,6 +424,94 @@ export function usePolyfence(): [PolyfenceState, PolyfenceActions] {
       } else {
         await polyfence.current.startTracking();
         logDebug('Tracking started', 'info');
+
+        // QA TEST: addZone() silent failure — verify which zone types survive in getZoneStates()
+        const testZones = [
+          // 1. Circle — should always pass
+          {
+            id: 'qa-circle-1',
+            name: 'QA Circle Zone',
+            type: 'circle' as const,
+            center: { latitude: 52.3676, longitude: 4.9041 },
+            radius: 200,
+          },
+          // 2. Simple convex polygon (triangle) — should pass
+          {
+            id: 'qa-polygon-convex',
+            name: 'QA Convex Triangle',
+            type: 'polygon' as const,
+            polygon: [
+              { latitude: 52.370, longitude: 4.900 },
+              { latitude: 52.375, longitude: 4.910 },
+              { latitude: 52.365, longitude: 4.910 },
+            ],
+          },
+          // 3. Concave polygon (L-shape, 6 pts) — may fail isPolygonSelfIntersecting()
+          {
+            id: 'qa-polygon-concave',
+            name: 'QA Concave L-Shape',
+            type: 'polygon' as const,
+            polygon: [
+              { latitude: 52.360, longitude: 4.900 },
+              { latitude: 52.360, longitude: 4.910 },
+              { latitude: 52.363, longitude: 4.910 },
+              { latitude: 52.363, longitude: 4.904 },
+              { latitude: 52.367, longitude: 4.904 },
+              { latitude: 52.367, longitude: 4.900 },
+            ],
+          },
+          // 4. Genuinely self-intersecting polygon (bowtie) — should correctly fail
+          {
+            id: 'qa-polygon-selfinter',
+            name: 'QA Self-Intersecting Bowtie',
+            type: 'polygon' as const,
+            polygon: [
+              { latitude: 52.360, longitude: 4.900 },
+              { latitude: 52.370, longitude: 4.910 },
+              { latitude: 52.370, longitude: 4.900 },
+              { latitude: 52.360, longitude: 4.910 },
+            ],
+          },
+          // 5. Circle with missing center — truly invalid, should reject
+          {
+            id: 'qa-invalid-circle',
+            name: 'QA Invalid Circle (no center)',
+            type: 'circle' as const,
+            center: undefined as any,
+            radius: 200,
+          },
+          // 6. Polygon with only 2 points — truly invalid, should reject
+          {
+            id: 'qa-invalid-polygon',
+            name: 'QA Invalid Polygon (2 pts)',
+            type: 'polygon' as const,
+            polygon: [
+              { latitude: 52.370, longitude: 4.900 },
+              { latitude: 52.375, longitude: 4.910 },
+            ],
+          },
+        ];
+
+        logDebug('QA-ADDZONE: adding 6 test zones (circle, convex, concave, self-intersecting, invalid-circle, invalid-polygon)', 'info');
+        for (const zone of testZones) {
+          try {
+            await polyfence.current.addZone(zone);
+            logDebug(`QA-ADDZONE: addZone() resolved OK for "${zone.name}"`, 'info');
+          } catch (e) {
+            logDebug(`QA-ADDZONE: addZone() threw for "${zone.name}": ${e}`, 'warn');
+          }
+        }
+
+        await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+        const surviving = await polyfence.current.getZoneStates();
+        const survivingIds = new Set(surviving.map((z) => z.zoneId));
+        logDebug(`QA-ADDZONE: getZoneStates() returned ${surviving.length} zones`, 'info');
+        surviving.forEach((z) => logDebug(`QA-ADDZONE: surviving zone: "${z.zoneName}"`, 'info'));
+        for (const zone of testZones) {
+          const found = survivingIds.has(zone.id);
+          logDebug(`QA-ADDZONE: "${zone.name}" → ${found ? 'FOUND in getZoneStates ✓' : 'MISSING from getZoneStates ✗'}`, found ? 'info' : 'warn');
+        }
+
         setIsTracking(true);
         startEventWatchdog();
         await saveTrackingState(true);
