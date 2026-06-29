@@ -367,13 +367,13 @@ export function usePolyfence(): [PolyfenceState, PolyfenceActions] {
           addError(error.message);
         });
 
-        // Subscribe to performance (health score, runtime status)
-        const perfSub = polyfence.current.onPerformance((_payload) => {
-          if (!mounted) return;
-          // Activity is now extracted from onLocation events (loc.activity)
-        });
+        subscriptions.current = [locSub, geoSub, errSub];
 
-        subscriptions.current = [locSub, geoSub, errSub, perfSub];
+        //requestBatteryOptimizationExemption() — should open system dialog
+        const exemptionResult = await polyfence.current.requestBatteryOptimizationExemption();
+        logDebug(`requestBatteryOptimizationExemption returned=${exemptionResult}`, 'info');
+        const batteryAfter = await polyfence.current.batteryOptimizationStatus();
+        logDebug(`batteryStatus after dialog isIgnoringOptimizations=${batteryAfter.isIgnoringOptimizations}`, 'info');
 
         if (mounted) setIsInitialized(true);
       } catch (e: unknown) {
@@ -424,6 +424,7 @@ export function usePolyfence(): [PolyfenceState, PolyfenceActions] {
       } else {
         await polyfence.current.startTracking();
         logDebug('Tracking started', 'info');
+
         setIsTracking(true);
         startEventWatchdog();
         await saveTrackingState(true);
