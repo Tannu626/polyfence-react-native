@@ -369,11 +369,11 @@ export function usePolyfence(): [PolyfenceState, PolyfenceActions] {
 
         subscriptions.current = [locSub, geoSub, errSub];
 
-        // TC-3.7: requestBatteryOptimizationExemption() — should open system dialog
+        //requestBatteryOptimizationExemption() — should open system dialog
         const exemptionResult = await polyfence.current.requestBatteryOptimizationExemption();
-        logDebug(`TC-3.7: requestBatteryOptimizationExemption returned=${exemptionResult}`, 'info');
+        logDebug(`requestBatteryOptimizationExemption returned=${exemptionResult}`, 'info');
         const batteryAfter = await polyfence.current.batteryOptimizationStatus();
-        logDebug(`TC-3.7: batteryStatus after dialog isIgnoringOptimizations=${batteryAfter.isIgnoringOptimizations}`, 'info');
+        logDebug(`batteryStatus after dialog isIgnoringOptimizations=${batteryAfter.isIgnoringOptimizations}`, 'info');
 
         if (mounted) setIsInitialized(true);
       } catch (e: unknown) {
