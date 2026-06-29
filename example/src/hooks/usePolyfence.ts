@@ -367,10 +367,10 @@ export function usePolyfence(): [PolyfenceState, PolyfenceActions] {
           addError(error.message);
         });
 
-        // Subscribe to performance (health score, runtime status)
-        const perfSub = polyfence.current.onPerformance((_payload) => {
+        //verify onPerformance payload shape
+        const perfSub = polyfence.current.onPerformance((payload) => {
           if (!mounted) return;
-          // Activity is now extracted from onLocation events (loc.activity)
+          logDebug(`onPerformance=${JSON.stringify(payload)}`, 'info');
         });
 
         subscriptions.current = [locSub, geoSub, errSub, perfSub];
