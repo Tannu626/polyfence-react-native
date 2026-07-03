@@ -301,7 +301,6 @@ export function usePolyfence(): [PolyfenceState, PolyfenceActions] {
         // Configure SmartGPS intelligent strategy
         await polyfence.current.updateConfiguration({
           updateStrategy: 'intelligent',
-          clusteringEnabled: true,
           clusterSettings: {
             enabled: true,
             activeRadiusMeters: 5000,
