@@ -247,7 +247,16 @@ const subscription = Polyfence.instance.onGeofenceEvent((event) => {
     case 'dwell':
       console.log(`Stayed in ${event.zoneId} for ${event.dwellDurationMs}ms`);
       break;
-    default:
+    // Recovery events fire when the SDK reconciles zone state after a
+    // GPS gap (airplane mode, tunnel, background restart, etc.). Treat
+    // them like enter/exit unless you specifically want to distinguish
+    // "just crossed the boundary" from "was already inside/outside when
+    // tracking resumed."
+    case 'recoveryEnter':
+      console.log(`Confirmed inside (post-recovery): ${event.zoneId}`);
+      break;
+    case 'recoveryExit':
+      console.log(`Confirmed outside (post-recovery): ${event.zoneId}`);
       break;
   }
 });
@@ -257,7 +266,7 @@ subscription.remove();
 ```
 
 <p align="center">
-  <img alt="ENTER, EXIT and DWELL events as your device moves" src="assets/screenshots/events.png" width="280" />
+  <img alt="ENTER, EXIT, DWELL and RECOVERY events as your device moves" src="assets/screenshots/events.png" width="280" />
 </p>
 
 Events fire whether your app is foregrounded, backgrounded, or the screen is locked. Here's what users see on each platform when zones fire in the background:
@@ -348,7 +357,7 @@ const errorSubscription = Polyfence.instance.onError((error) => {
 | Method | Callback | Description |
 |--------|----------|-------------|
 | `onLocationUpdate(callback)` | `(location: PolyfenceLocation) => void` | Raw GPS location updates |
-| `onGeofenceEvent(callback)` | `(event: GeofenceEvent) => void` | Zone enter/exit/dwell events |
+| `onGeofenceEvent(callback)` | `(event: GeofenceEvent) => void` | Zone enter / exit / dwell / recoveryEnter / recoveryExit events |
 | `onError(callback)` | `(error: PolyfenceError) => void` | **Central error channel — subscribe before any other SDK call.** GPS / permission / service / battery / zone-validation errors all route here; errors fired without a listener are dropped silently |
 | `onPerformance(callback)` | `(payload: PerformanceEventPayload) => void` | Performance status updates. Multiplexed channel — discriminate on `payload.type` (`'status'`, `'runtime_status'`, …); see [Performance Events](#performance-events) |
 | `onHealthScore(callback)` | `(event: HealthScoreEvent) => void` | Periodic health score (0-100) with top issue |
