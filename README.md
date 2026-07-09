@@ -80,6 +80,8 @@ npm install polyfence-react-native
 yarn add polyfence-react-native
 ```
 
+**Current version:** <!-- pf:version -->2.0.3<!-- /pf:version -->
+
 **Native dependency:** Polyfence uses [polyfence-core](https://github.com/polyfence/polyfence-core) for native geofencing engines. It's included automatically — Maven for Android, CocoaPods for iOS. On iOS, run `cd ios && pod install` after adding the dependency.
 
 ```bash
@@ -531,10 +533,8 @@ await Polyfence.instance.updateConfiguration({
     enabled: true,
     timeWindows: [
       {
-        startHour: 9,
-        startMinute: 0,
-        endHour: 17,
-        endMinute: 0,
+        startTime: { hour: 9, minute: 0 },
+        endTime: { hour: 17, minute: 0 },
         daysOfWeek: [1, 2, 3, 4, 5], // Monday-Friday
       },
     ],
@@ -672,7 +672,7 @@ android {
 
 ## Known Differences from Flutter
 
-The following Flutter APIs are intentionally deferred from v2.0.2 of this package:
+The following Flutter APIs are intentionally deferred from this package:
 
 - `enableIntelligentOptimization()`, `enableProximityOptimization()`, `enableMovementOptimization()` — ML-powered optimization APIs. These will be added when the intelligence layer is integrated (planned for a future release).
 - `zones` getter — Use `getZoneStates()` to query current zone state.
