@@ -201,6 +201,23 @@ export class Polyfence {
     return NativePolyfence.stopTracking();
   }
 
+  /**
+   * Add a zone for monitoring.
+   *
+   * The zone is persisted natively and starts generating entry/exit events
+   * once tracking is running.
+   *
+   * **Duplicate IDs.** Calling `addZone` with a `zone.id` that is already
+   * being monitored silently overwrites the previous zone — no error is
+   * thrown. Re-adding also **resets the persisted INSIDE/OUTSIDE state**
+   * for that zone (and on iOS, its confidence state). If the device is
+   * currently inside the zone, the next reconciliation may fire a fresh
+   * `enter` / `recoveryEnter` event — in-place metadata edits without a
+   * re-enter are a known limitation. If your workflow requires unique
+   * IDs across additions, track loaded IDs in application state:
+   * `getZoneStates()` is only reliable after `startTracking()` (on Android
+   * it returns `[]` before then — see the README's Zone State section).
+   */
   async addZone(zone: Zone): Promise<void> {
     this.assertNotDisposed();
     this.assertInitialized();
