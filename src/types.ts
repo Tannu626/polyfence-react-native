@@ -24,7 +24,9 @@ export type GeofenceEventType =
   | 'exit'
   | 'dwell'
   | 'recoveryEnter'
-  | 'recoveryExit';
+  | 'recoveryExit'
+  | 'signalLost'
+  | 'signalRestored';
 
 export interface GeofenceEvent {
   zoneId: string;
@@ -171,6 +173,13 @@ export interface PolyfenceConfiguration {
   accuracyProfile?: AccuracyProfile;
   updateStrategy?: UpdateStrategy;
   gpsAccuracyThreshold?: number;
+  /**
+   * Degraded-GPS staleness watchdog, in milliseconds. `0` (default) disables it.
+   * When `> 0`, a low-accuracy fix may drive an exit for a zone you're already
+   * inside, and after this long with no valid fix while inside a zone a
+   * `signalLost` event is emitted (resolved by `signalRestored` or `exit`).
+   */
+  gpsStalenessTimeoutMs?: number;
   enableDebugLogging?: boolean;
   // Nested settings
   proximitySettings?: ProximitySettings;

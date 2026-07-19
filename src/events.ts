@@ -19,7 +19,8 @@ import type {
 // under RN 0.76+ Bridgeless / New Architecture.
 const emitter = DeviceEventEmitter;
 
-// Valid geofence event types: enter, exit, dwell, recoveryEnter, recoveryExit
+// Valid geofence event types: enter, exit, dwell, recoveryEnter, recoveryExit,
+// signalLost, signalRestored
 // Normalization uses parseGeofenceEventType() below (unknown → dropped).
 
 /** Map native error codes/keys to the public PolyfenceErrorType union. */
@@ -160,6 +161,8 @@ function parseGeofenceEventType(raw: string): GeofenceEventType | null {
     DWELL: 'dwell',
     RECOVERY_ENTER: 'recoveryEnter',
     RECOVERY_EXIT: 'recoveryExit',
+    SIGNAL_LOST: 'signalLost',
+    SIGNAL_RESTORED: 'signalRestored',
   };
   return mapping[key] ?? null;
 }
@@ -180,7 +183,7 @@ function normalizeGeofenceEvent(
           rawType,
         )} ` +
           `for zoneId=${JSON.stringify(raw.zoneId ?? null)}. ` +
-          'Expected one of: ENTER, EXIT, DWELL, RECOVERY_ENTER, RECOVERY_EXIT.',
+          'Expected one of: ENTER, EXIT, DWELL, RECOVERY_ENTER, RECOVERY_EXIT, SIGNAL_LOST, SIGNAL_RESTORED.',
       );
     }
     return null;
