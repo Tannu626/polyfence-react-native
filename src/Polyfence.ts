@@ -249,12 +249,25 @@ export class Polyfence {
     return NativePolyfence.addZone(zone);
   }
 
+  /**
+   * Remove a zone from monitoring.
+   *
+   * The Promise resolves after the engine and persistence are both
+   * updated on both platforms — a `getZoneStates()` call immediately
+   * after `removeZone()` reflects the removal without needing an
+   * explicit wait.
+   */
   async removeZone(zoneId: string): Promise<void> {
     this.assertNotDisposed();
     this.assertInitialized();
     return NativePolyfence.removeZone(zoneId);
   }
 
+  /**
+   * Remove every zone from monitoring. Same read-after-write
+   * semantics as `removeZone` — `getZoneStates()` immediately after
+   * `clearAllZones()` returns an empty array on both platforms.
+   */
   async clearAllZones(): Promise<void> {
     this.assertNotDisposed();
     this.assertInitialized();
